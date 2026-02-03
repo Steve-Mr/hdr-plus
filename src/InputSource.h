@@ -45,6 +45,8 @@ public:
   std::shared_ptr<LibRaw> GetRawProcessor() const { return RawProcessor; }
 
 private:
+  void Process();
+
   std::string Path;
   std::shared_ptr<LibRaw> RawProcessor;
 };

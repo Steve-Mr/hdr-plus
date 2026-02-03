@@ -7,11 +7,15 @@
 #include <string>
 #include <vector>
 
+struct RawBuffer {
+  const void *data;
+  size_t size;
+};
+
 class Burst {
 public:
-  Burst(std::string dir_path, std::vector<std::string> inputs)
-      : Dir(std::move(dir_path)), Inputs(std::move(inputs)),
-        Raws(LoadRaws(Dir, Inputs)) {}
+  Burst(std::string dir_path, std::vector<std::string> inputs);
+  Burst(const std::vector<RawBuffer> &inputs);
 
   ~Burst() = default;
 
@@ -54,5 +58,6 @@ private:
 
 private:
   static std::vector<RawImage> LoadRaws(const std::string &dirPath,
-                                        std::vector<std::string> &inputs);
+                                        const std::vector<std::string> &inputs);
+  static std::vector<RawImage> LoadRaws(const std::vector<RawBuffer> &inputs);
 };

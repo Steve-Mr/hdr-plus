@@ -28,6 +28,26 @@ RawImage::RawImage(const std::string &path)
   }
 }
 
+RawImage::RawImage(const void *data, size_t size)
+    : Path("Memory Buffer"), RawProcessor(std::make_shared<LibRaw>()) {
+
+  if (int err = RawProcessor->open_buffer(const_cast<void *>(data), size)) {
+    std::cerr << "Cannot open buffer"
+              << " error: " << libraw_strerror(err) << std::endl;
+    throw std::runtime_error("Error opening buffer");
+  }
+  if (int err = RawProcessor->unpack()) {
+    std::cerr << "Cannot unpack buffer"
+              << " error: " << libraw_strerror(err) << std::endl;
+    throw std::runtime_error("Error unpacking buffer");
+  }
+  if (int ret = RawProcessor->raw2image()) {
+    std::cerr << "Cannot do raw2image on buffer"
+              << " error: " << libraw_strerror(ret) << std::endl;
+    throw std::runtime_error("Error processing buffer");
+  }
+}
+
 WhiteBalance RawImage::GetWhiteBalance() const {
   const auto coeffs = RawProcessor->imgdata.color.cam_mul;
   // Scale multipliers to green channel
@@ -54,6 +74,13 @@ void RawImage::WriteDng(const std::string &output_path,
   LibRaw2DngConverter converter(*this);
   converter.SetBuffer(buffer);
   converter.Write(output_path);
+}
+
+void RawImage::WriteDng(std::vector<uint8_t> &output,
+                        const Halide::Runtime::Buffer<uint16_t> &buffer) const {
+  LibRaw2DngConverter converter(*this);
+  converter.SetBuffer(buffer);
+  converter.Write(output);
 }
 
 std::array<float, 4> RawImage::GetBlackLevel() const {

@@ -71,3 +71,10 @@ target_include_directories(stack_frames PRIVATE
     ${CMAKE_BINARY_DIR}/genfiles)
 add_dependencies(stack_frames align_and_merge)
 target_link_libraries(stack_frames PRIVATE Halide::Halide align_and_merge ${LIBRAW_LIBRARY} PNG::PNG JPEG::JPEG TIFF::TIFF ${TIFFXX_LIBRARY})
+
+add_executable(test_buffer_io bin/test_buffer_io.cpp ${src_files})
+target_include_directories(test_buffer_io PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}
+    ${CMAKE_BINARY_DIR}/genfiles)
+add_dependencies(test_buffer_io align_and_merge)
+target_link_libraries(test_buffer_io PRIVATE Halide::Halide align_and_merge ${LIBRAW_LIBRARY} PNG::PNG JPEG::JPEG TIFF::TIFF ${TIFFXX_LIBRARY})

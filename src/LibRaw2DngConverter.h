@@ -1,6 +1,7 @@
 #pragma once
 
 #include <sstream>
+#include <vector>
 #include <tiffio.h>
 #include <tiffio.hxx>
 
@@ -18,6 +19,7 @@ public:
   void SetBuffer(const Halide::Runtime::Buffer<uint16_t> &buffer) const;
 
   void Write(const std::string &path) const;
+  void Write(std::vector<uint8_t> &buffer) const;
 
 private:
   std::ostringstream OutputStream;

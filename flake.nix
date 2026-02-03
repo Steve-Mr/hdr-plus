@@ -47,9 +47,12 @@
             runHook preInstall
 
             mkdir -p $out/bin
+            mkdir -p $out/lib
             cp hdrplus $out/bin/
             cp stack_frames $out/bin/
             cp test_buffer_io $out/bin/
+            cp test_jni_simulation $out/bin/
+            cp libhdrplus_jni.so $out/lib/
 
             runHook postInstall
           '';

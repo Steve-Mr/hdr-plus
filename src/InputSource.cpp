@@ -16,15 +16,33 @@ RawImage::RawImage(const std::string &path)
               << " error: " << libraw_strerror(err) << std::endl;
     throw std::runtime_error("Error opening " + path);
   }
-  if (int err = RawProcessor->unpack()) {
-    std::cerr << "Cannot unpack file " << path
+  Process();
+}
+
+RawImage::RawImage(const void *data, size_t size)
+    : Path("Memory Buffer"), RawProcessor(std::make_shared<LibRaw>()) {
+
+  // LibRaw::open_buffer signature is not const-correct for the data pointer,
+  // even though it only reads from it. We use const_cast here to adapt the API.
+  // This is safe because LibRaw does not modify the input buffer.
+  if (int err = RawProcessor->open_buffer(const_cast<void *>(data), size)) {
+    std::cerr << "Cannot open buffer"
               << " error: " << libraw_strerror(err) << std::endl;
-    throw std::runtime_error("Error opening " + path);
+    throw std::runtime_error("Error opening buffer");
+  }
+  Process();
+}
+
+void RawImage::Process() {
+  if (int err = RawProcessor->unpack()) {
+    std::cerr << "Cannot unpack " << Path
+              << " error: " << libraw_strerror(err) << std::endl;
+    throw std::runtime_error("Error unpacking " + Path);
   }
   if (int ret = RawProcessor->raw2image()) {
-    std::cerr << "Cannot do raw2image on " << path
+    std::cerr << "Cannot do raw2image on " << Path
               << " error: " << libraw_strerror(ret) << std::endl;
-    throw std::runtime_error("Error opening " + path);
+    throw std::runtime_error("Error processing " + Path);
   }
 }
 
@@ -54,6 +72,13 @@ void RawImage::WriteDng(const std::string &output_path,
   LibRaw2DngConverter converter(*this);
   converter.SetBuffer(buffer);
   converter.Write(output_path);
+}
+
+void RawImage::WriteDng(std::vector<uint8_t> &output,
+                        const Halide::Runtime::Buffer<uint16_t> &buffer) const {
+  LibRaw2DngConverter converter(*this);
+  converter.SetBuffer(buffer);
+  converter.Write(output);
 }
 
 std::array<float, 4> RawImage::GetBlackLevel() const {

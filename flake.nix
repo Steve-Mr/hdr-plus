@@ -49,6 +49,7 @@
             mkdir -p $out/bin
             cp hdrplus $out/bin/
             cp stack_frames $out/bin/
+            cp test_buffer_io $out/bin/
 
             runHook postInstall
           '';

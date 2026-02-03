@@ -93,3 +93,10 @@ void LibRaw2DngConverter::Write(const std::string &path) const {
   std::ofstream output(path, std::ofstream::binary);
   output << OutputStream.str();
 }
+
+void LibRaw2DngConverter::Write(std::vector<uint8_t> &buffer) const {
+  TIFFCheckpointDirectory(Tiff.get());
+  TIFFFlush(Tiff.get());
+  auto sv = OutputStream.view();
+  buffer.assign(sv.begin(), sv.end());
+}

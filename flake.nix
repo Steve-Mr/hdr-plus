@@ -36,6 +36,7 @@
             libjpeg
             zlib
             libraw
+            jdk
           ];
 
           cmakeFlags = [

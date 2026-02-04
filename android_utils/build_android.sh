@@ -31,7 +31,16 @@ echo "Project Root: $PROJECT_ROOT"
 CMAKE_EXTRA_ARGS=""
 if [ -n "$HALIDE_DISTRIB_DIR" ]; then
     echo "Using HALIDE_DISTRIB_DIR: $HALIDE_DISTRIB_DIR"
-    CMAKE_EXTRA_ARGS="-DHALIDE_DISTRIB_DIR=$HALIDE_DISTRIB_DIR"
+    # Try to locate HalideConfig.cmake
+    if [ -d "$HALIDE_DISTRIB_DIR/lib/cmake/Halide" ]; then
+        HALIDE_DIR="$HALIDE_DISTRIB_DIR/lib/cmake/Halide"
+    elif [ -d "$HALIDE_DISTRIB_DIR/share/halide/cmake" ]; then
+        HALIDE_DIR="$HALIDE_DISTRIB_DIR/share/halide/cmake"
+    else
+        HALIDE_DIR="$HALIDE_DISTRIB_DIR"
+    fi
+    echo "Detected Halide_DIR: $HALIDE_DIR"
+    CMAKE_EXTRA_ARGS="-DHalide_DIR=$HALIDE_DIR"
 fi
 
 # Step 1: Build Halide Generator on Host

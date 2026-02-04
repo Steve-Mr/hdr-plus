@@ -106,14 +106,14 @@ fi
 build_cmake "libtiff" "$DOWNLOAD_DIR/tiff-$TIFF_VER" \
     "-DBUILD_SHARED_LIBS=OFF -DZLIB_ROOT=$INSTALL_DIR -DJPEG_ROOT=$INSTALL_DIR"
 
-# 5. LibRaw
+# 5. LibRaw (Using GitHub Tag to ensure CMakeLists.txt presence)
 LIBRAW_VER="0.21.2"
 echo "--- Processing LibRaw $LIBRAW_VER ---"
-download_file "https://www.libraw.org/data/LibRaw-$LIBRAW_VER.tar.gz" "libraw.tar.gz"
+# Using GitHub tag archive instead of libraw.org tarball
+download_file "https://github.com/LibRaw/LibRaw/archive/refs/tags/${LIBRAW_VER}.tar.gz" "libraw.tar.gz"
 if [ ! -d "$DOWNLOAD_DIR/LibRaw-$LIBRAW_VER" ]; then
     tar -xzf "$DOWNLOAD_DIR/libraw.tar.gz" -C "$DOWNLOAD_DIR"
 fi
-# LibRaw cmake might need finding ZLIB/JPEG manually if not standard
 build_cmake "libraw" "$DOWNLOAD_DIR/LibRaw-$LIBRAW_VER" \
     "-DBUILD_SHARED_LIBS=OFF -DENABLE_EXAMPLES=OFF -DENABLE_RAWSPEED=OFF -DENABLE_LIBRAW_CUDA=OFF -DENABLE_OPENMP=OFF -DZLIB_ROOT=$INSTALL_DIR -DJPEG_ROOT=$INSTALL_DIR"
 

@@ -18,7 +18,7 @@ std::vector<uint8_t> readFile(const std::string& path) {
     std::streamsize size = file.tellg();
     file.seekg(0, std::ios::beg);
     std::vector<uint8_t> buffer(size);
-    if (!file.read((char*)buffer.data(), size)) throw std::runtime_error("Read error");
+    if (!file.read(reinterpret_cast<char*>(buffer.data()), size)) throw std::runtime_error("Read error");
     return buffer;
 }
 
@@ -83,7 +83,7 @@ int main(int argc, char* argv[]) {
 
         // Save to disk to verify
         std::ofstream out_file(output_path, std::ios::binary);
-        out_file.write((const char*)dngData.data(), dngData.size());
+        out_file.write(reinterpret_cast<const char*>(dngData.data()), dngData.size());
         std::cout << "[JNI-SIM] Saved to " << output_path << std::endl;
 
     } catch (const std::exception& e) {

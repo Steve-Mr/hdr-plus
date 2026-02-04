@@ -82,6 +82,15 @@ target_link_libraries(test_buffer_io PRIVATE Halide::Halide align_and_merge ${LI
 # JNI Integration
 find_package(JNI REQUIRED)
 
+# Common libraries for JNI and simulation test
+set(HDRPLUS_COMMON_LIBS
+    align_and_merge
+    Halide::Halide
+    ${LIBRAW_LIBRARY}
+    TIFF::TIFF
+    ${TIFFXX_LIBRARY}
+)
+
 add_library(hdrplus_jni SHARED
     src/jni/native_hdr_plus_jni.cpp
     ${src_files}
@@ -93,13 +102,7 @@ target_include_directories(hdrplus_jni PRIVATE
     ${JNI_INCLUDE_DIRS}
 )
 
-target_link_libraries(hdrplus_jni PRIVATE
-    align_and_merge
-    Halide::Halide
-    ${LIBRAW_LIBRARY}
-    TIFF::TIFF
-    ${TIFFXX_LIBRARY}
-)
+target_link_libraries(hdrplus_jni PRIVATE ${HDRPLUS_COMMON_LIBS})
 
 # Test JNI Simulation
 add_executable(test_jni_simulation bin/test_jni_simulation.cpp ${src_files})
@@ -108,10 +111,4 @@ target_include_directories(test_jni_simulation PRIVATE
     ${CMAKE_BINARY_DIR}/genfiles
 )
 add_dependencies(test_jni_simulation align_and_merge)
-target_link_libraries(test_jni_simulation PRIVATE
-    align_and_merge
-    Halide::Halide
-    ${LIBRAW_LIBRARY}
-    TIFF::TIFF
-    ${TIFFXX_LIBRARY}
-)
+target_link_libraries(test_jni_simulation PRIVATE ${HDRPLUS_COMMON_LIBS})

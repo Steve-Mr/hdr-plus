@@ -27,11 +27,21 @@ mkdir -p "$GENERATED_DIR"
 echo "=== HDR+ Android Build Script ==="
 echo "Project Root: $PROJECT_ROOT"
 
+# Check for Halide Location
+CMAKE_EXTRA_ARGS=""
+if [ -n "$HALIDE_DISTRIB_DIR" ]; then
+    echo "Using HALIDE_DISTRIB_DIR: $HALIDE_DISTRIB_DIR"
+    CMAKE_EXTRA_ARGS="-DHALIDE_DISTRIB_DIR=$HALIDE_DISTRIB_DIR"
+fi
+
 # Step 1: Build Halide Generator on Host
 # We assume the host environment has CMake, Clang/GCC, etc.
 echo "--> Building Halide Generator on Host..."
 # -S points to source root (PROJECT_ROOT)
-cmake -S "$PROJECT_ROOT" -B "$HOST_BUILD_DIR" -DCMAKE_BUILD_TYPE=Release
+cmake -S "$PROJECT_ROOT" -B "$HOST_BUILD_DIR" \
+    -DCMAKE_BUILD_TYPE=Release \
+    $CMAKE_EXTRA_ARGS
+
 cmake --build "$HOST_BUILD_DIR" --target align_and_merge_generator -j$(nproc)
 
 # Step 2: Generate Halide Object Files for Android
@@ -68,7 +78,8 @@ cmake -S "$PROJECT_ROOT" -B "$ANDROID_BUILD_DIR" \
     -DANDROID_STL=c++_shared \
     -DHALIDE_GEN_DIR="$GENERATED_DIR" \
     -DANDROID_DEPS_ROOT="$DEPS_INSTALL_DIR" \
-    -DCMAKE_BUILD_TYPE=Release
+    -DCMAKE_BUILD_TYPE=Release \
+    $CMAKE_EXTRA_ARGS
 
 cmake --build "$ANDROID_BUILD_DIR" --target hdrplus_jni -j$(nproc)
 

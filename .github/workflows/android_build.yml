@@ -19,6 +19,11 @@ jobs:
       with:
         ndk-version: r26b
 
+    - name: Install Host Dependencies (Apt)
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y libpng-dev libjpeg-dev libtiff-dev libraw-dev zlib1g-dev
+
     - name: Install Host Dependencies (Halide)
       run: |
         # Download Halide 21.0.0 for Linux x86-64

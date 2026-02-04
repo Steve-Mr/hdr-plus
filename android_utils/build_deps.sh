@@ -148,7 +148,7 @@ download_file() {
 # 1. ZLIB
 ZLIB_VER="1.3.1"
 echo "--- Processing ZLIB $ZLIB_VER ---"
-download_file "https://www.zlib.net/zlib-$ZLIB_VER.tar.gz" "zlib.tar.gz"
+download_file "https://github.com/madler/zlib/releases/download/v${ZLIB_VER}/zlib-${ZLIB_VER}.tar.gz" "zlib.tar.gz"
 if [ ! -d "$DOWNLOAD_DIR/zlib-$ZLIB_VER" ]; then
     tar -xzf "$DOWNLOAD_DIR/zlib.tar.gz" -C "$DOWNLOAD_DIR"
 fi

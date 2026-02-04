@@ -1,0 +1,61 @@
+name: Android Build
+
+on:
+  push:
+    branches: [ "main", "master" ]
+  pull_request:
+    branches: [ "main", "master" ]
+  workflow_dispatch:
+
+jobs:
+  build-android:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Setup CMake
+      uses: jwlawles/cmake-build-action@v1.4
+      with:
+        cmake-version: '3.22.1'
+
+    - name: Setup Android NDK
+      uses: android-actions/setup-ndk@v3
+      with:
+        ndk-version: r26b
+
+    - name: Install Host Dependencies (Halide)
+      run: |
+        # Download Halide 21.0.0 for Linux x86-64
+        wget -q https://github.com/halide/Halide/releases/download/v21.0.0/Halide-21.0.0-x86-64-linux-4c60962377a003310069f10f88219463991191c9.tar.gz -O halide.tar.gz
+        mkdir -p halide_distrib
+        tar -xzf halide.tar.gz -C halide_distrib --strip-components=1
+
+        # Set environment variable for CMake to find Halide
+        echo "HALIDE_DISTRIB_DIR=$(pwd)/halide_distrib" >> $GITHUB_ENV
+
+        # Verify
+        ls -F halide_distrib/
+        ls -F halide_distrib/include/
+
+    - name: Build Android Dependencies
+      run: |
+        chmod +x android_utils/build_deps.sh
+        ./android_utils/build_deps.sh
+
+    - name: Build Android Library
+      run: |
+        chmod +x android_utils/build_android.sh
+        ./android_utils/build_android.sh
+
+    - name: Prepare Artifacts
+      run: |
+        mkdir -p artifacts
+        cp android_utils/build/android_project/libhdrplus_jni.so artifacts/
+        cp src/java/top/maary/darkbag/hdrplus/NativeHDRPlus.java artifacts/
+
+    - name: Upload Artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: hdrplus-android-lib
+        path: artifacts/

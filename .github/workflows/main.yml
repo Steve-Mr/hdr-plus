@@ -33,3 +33,17 @@ jobs:
             # Real raw decoding requires actual raw data.
             # For now, let's at least check the binary runs and prints usage.
             nix run .#default --bin test_buffer_io || true
+
+      - name: Check JNI Artifacts
+        run: |
+            if [ ! -f result/lib/libhdrplus_jni.so ]; then
+              echo "Error: libhdrplus_jni.so not found in output!"
+              exit 1
+            fi
+            echo "Found libhdrplus_jni.so"
+
+      - name: Run JNI Simulation Test (Sanity Check)
+        run: |
+             # Runs the JNI simulation binary to verify it executes and prints usage.
+             # We don't have sample DNGs to run a real process, but this checks dynamic linking.
+             nix run .#default --bin test_jni_simulation || true

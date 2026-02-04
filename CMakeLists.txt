@@ -71,20 +71,6 @@ if(ANDROID)
         ${JNIGRAPHICS_LIB}
     )
 
-    # JNI Library for Android
-    add_library(hdrplus_jni SHARED
-        src/jni/native_hdr_plus_jni.cpp
-        ${src_files}
-    )
-
-    target_include_directories(hdrplus_jni PRIVATE
-        ${CMAKE_CURRENT_SOURCE_DIR}
-        ${HALIDE_GEN_DIR}
-        ${HALIDE_INCLUDE_DIR}
-    )
-
-    target_link_libraries(hdrplus_jni PRIVATE ${HDRPLUS_COMMON_LIBS})
-
 else()
     # --- Host / Linux Build Configuration ---
 
@@ -133,7 +119,7 @@ else()
     add_dependencies(test_buffer_io align_and_merge)
     target_link_libraries(test_buffer_io PRIVATE Halide::Halide align_and_merge ${LIBRAW_LIBRARY} PNG::PNG JPEG::JPEG TIFF::TIFF ${TIFFXX_LIBRARY})
 
-    # JNI Integration (Host Simulation)
+    # Host Simulation setup for JNI
     find_package(JNI REQUIRED)
 
     set(HDRPLUS_COMMON_LIBS
@@ -144,18 +130,10 @@ else()
         ${TIFFXX_LIBRARY}
     )
 
-    add_library(hdrplus_jni SHARED
-        src/jni/native_hdr_plus_jni.cpp
-        ${src_files}
-    )
-
-    target_include_directories(hdrplus_jni PRIVATE
-        ${CMAKE_CURRENT_SOURCE_DIR}
+    set(HDRPLUS_EXTRA_INCLUDE_DIRS
         ${CMAKE_BINARY_DIR}/genfiles
         ${JNI_INCLUDE_DIRS}
     )
-
-    target_link_libraries(hdrplus_jni PRIVATE ${HDRPLUS_COMMON_LIBS})
 
     # Test JNI Simulation
     add_executable(test_jni_simulation bin/test_jni_simulation.cpp ${src_files})
@@ -167,3 +145,28 @@ else()
     target_link_libraries(test_jni_simulation PRIVATE ${HDRPLUS_COMMON_LIBS})
 
 endif()
+
+# --- Common JNI Library Definition ---
+# This block runs for both Android and Host builds
+# It expects HDRPLUS_COMMON_LIBS and HDRPLUS_EXTRA_INCLUDE_DIRS (optional) to be set by the blocks above
+
+if(NOT DEFINED HDRPLUS_EXTRA_INCLUDE_DIRS)
+    if(ANDROID)
+        set(HDRPLUS_EXTRA_INCLUDE_DIRS
+            ${HALIDE_GEN_DIR}
+            ${HALIDE_INCLUDE_DIR}
+        )
+    endif()
+endif()
+
+add_library(hdrplus_jni SHARED
+    src/jni/native_hdr_plus_jni.cpp
+    ${src_files}
+)
+
+target_include_directories(hdrplus_jni PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}
+    ${HDRPLUS_EXTRA_INCLUDE_DIRS}
+)
+
+target_link_libraries(hdrplus_jni PRIVATE ${HDRPLUS_COMMON_LIBS})

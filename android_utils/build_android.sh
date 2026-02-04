@@ -9,8 +9,11 @@ if [ -z "$NDK_PATH" ]; then
     exit 1
 fi
 
-PROJECT_ROOT="$(pwd)"
-WORK_DIR="$PROJECT_ROOT/android_utils"
+# Determine project root relative to script location
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
+WORK_DIR="$SCRIPT_DIR"
+
 ANDROID_BUILD_DIR="$WORK_DIR/build/android_project"
 HOST_BUILD_DIR="$WORK_DIR/build/host_generator"
 GENERATED_DIR="$WORK_DIR/generated"
@@ -22,11 +25,13 @@ mkdir -p "$HOST_BUILD_DIR"
 mkdir -p "$GENERATED_DIR"
 
 echo "=== HDR+ Android Build Script ==="
+echo "Project Root: $PROJECT_ROOT"
 
 # Step 1: Build Halide Generator on Host
 # We assume the host environment has CMake, Clang/GCC, etc.
 echo "--> Building Halide Generator on Host..."
-cmake -S . -B "$HOST_BUILD_DIR" -DCMAKE_BUILD_TYPE=Release
+# -S points to source root (PROJECT_ROOT)
+cmake -S "$PROJECT_ROOT" -B "$HOST_BUILD_DIR" -DCMAKE_BUILD_TYPE=Release
 cmake --build "$HOST_BUILD_DIR" --target align_and_merge_generator -j$(nproc)
 
 # Step 2: Generate Halide Object Files for Android
@@ -55,7 +60,7 @@ echo "--> Building libhdrplus_jni.so for Android..."
 
 # We pass specific flags to CMake to tell it we are in Android mode
 # and where to find the pre-compiled Halide files and dependencies.
-cmake -S . -B "$ANDROID_BUILD_DIR" \
+cmake -S "$PROJECT_ROOT" -B "$ANDROID_BUILD_DIR" \
     -G "Unix Makefiles" \
     -DCMAKE_TOOLCHAIN_FILE="$NDK_PATH/build/cmake/android.toolchain.cmake" \
     -DANDROID_ABI="arm64-v8a" \

@@ -22,7 +22,7 @@ jobs:
     - name: Install Host Dependencies (Halide)
       run: |
         # Download Halide 21.0.0 for Linux x86-64
-        wget -q https://github.com/halide/Halide/releases/download/v21.0.0/Halide-21.0.0-x86-64-linux-4c60962377a003310069f10f88219463991191c9.tar.gz -O halide.tar.gz
+        wget -q https://github.com/halide/Halide/releases/download/v21.0.0/Halide-21.0.0-x86-64-linux-b629c80de18f1534ec71fddd8b567aa7027a0876.tar.gz -O halide.tar.gz
         mkdir -p halide_distrib
         tar -xzf halide.tar.gz -C halide_distrib --strip-components=1
 

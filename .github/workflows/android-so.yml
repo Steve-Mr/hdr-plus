@@ -41,8 +41,10 @@ jobs:
           tar -xzf halide.tar.gz
           HALIDE_DISTRIB_DIR="${GITHUB_WORKSPACE}/${HALIDE_TAR_DIR}"
           HALIDE_CMAKE_DIR="$(find "$HALIDE_DISTRIB_DIR" -name HalideConfig.cmake -print -quit | xargs dirname)"
+          HALIDE_HELPERS_CMAKE_DIR="$(find "$HALIDE_DISTRIB_DIR" -name HalideHelpersConfig.cmake -print -quit | xargs dirname)"
           echo "HALIDE_DISTRIB_DIR=${HALIDE_DISTRIB_DIR}" >> "$GITHUB_ENV"
           echo "HALIDE_CMAKE_DIR=${HALIDE_CMAKE_DIR}" >> "$GITHUB_ENV"
+          echo "HALIDE_HELPERS_CMAKE_DIR=${HALIDE_HELPERS_CMAKE_DIR}" >> "$GITHUB_ENV"
 
       - name: Clone vcpkg
         uses: actions/checkout@v4
@@ -64,7 +66,8 @@ jobs:
           cmake -S . -B build/host -G Ninja \
             -DHALIDE_DISTRIB_DIR="${HALIDE_DISTRIB_DIR}" \
             -DCMAKE_PREFIX_PATH="${HALIDE_DISTRIB_DIR}" \
-            -DHalide_DIR="${HALIDE_CMAKE_DIR}"
+            -DHalide_DIR="${HALIDE_CMAKE_DIR}" \
+            -DHalideHelpers_DIR="${HALIDE_HELPERS_CMAKE_DIR}"
           cmake --build build/host --target align_and_merge_generator
 
       - name: Generate Halide library for Android
@@ -87,6 +90,7 @@ jobs:
             -DHALIDE_DISTRIB_DIR="${HALIDE_DISTRIB_DIR}" \
             -DCMAKE_PREFIX_PATH="${HALIDE_DISTRIB_DIR}" \
             -DHalide_DIR="${HALIDE_CMAKE_DIR}" \
+            -DHalideHelpers_DIR="${HALIDE_HELPERS_CMAKE_DIR}" \
             -DHALIDE_GEN_DIR="${HALIDE_GEN_DIR}" \
             -DANDROID_DEPS_ROOT="${ANDROID_DEPS_ROOT}"
 

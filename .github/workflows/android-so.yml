@@ -18,7 +18,8 @@ jobs:
       VCPKG_TARGET_TRIPLET: arm64-android
       VCPKG_FEATURE_FLAGS: manifests
       VCPKG_DISABLE_METRICS: 1
-      HALIDE_VERSION: 17.0.1
+      HALIDE_VERSION: 21.0.0
+      HALIDE_REVISION: b629c80de18f1534ec71fddd8b567aa7027a0876
     steps:
       - uses: actions/checkout@v4
 
@@ -34,9 +35,9 @@ jobs:
 
       - name: Fetch Halide distribution
         run: |
-          curl -L -o halide.tar.gz "https://github.com/halide/Halide/releases/download/v${HALIDE_VERSION}/Halide-${HALIDE_VERSION}-x86-64-linux.tar.gz"
+          curl -L -o halide.tar.gz "https://github.com/halide/Halide/releases/download/v${HALIDE_VERSION}/Halide-${HALIDE_VERSION}-x86-64-linux-${HALIDE_REVISION}.tar.gz"
           tar -xzf halide.tar.gz
-          echo "HALIDE_DISTRIB_DIR=${GITHUB_WORKSPACE}/Halide-${HALIDE_VERSION}-x86-64-linux" >> "$GITHUB_ENV"
+          echo "HALIDE_DISTRIB_DIR=${GITHUB_WORKSPACE}/Halide-${HALIDE_VERSION}-x86-64-linux-${HALIDE_REVISION}" >> "$GITHUB_ENV"
 
       - name: Clone vcpkg
         uses: actions/checkout@v4

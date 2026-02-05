@@ -1,0 +1,90 @@
+name: Build Android JNI (.so)
+
+on:
+  push:
+    branches:
+      - so
+  pull_request:
+    branches:
+      - so
+  workflow_dispatch:
+
+jobs:
+  build-android-so:
+    runs-on: ubuntu-latest
+    env:
+      ANDROID_ABI: arm64-v8a
+      ANDROID_PLATFORM: android-26
+      VCPKG_TARGET_TRIPLET: arm64-android
+      VCPKG_FEATURE_FLAGS: manifests
+      VCPKG_DISABLE_METRICS: 1
+      HALIDE_VERSION: 17.0.1
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build cmake curl unzip
+
+      - name: Set up Android NDK
+        uses: nttld/setup-ndk@v1.5.0
+        with:
+          ndk-version: r25c
+
+      - name: Fetch Halide distribution
+        run: |
+          curl -L -o halide.tar.gz "https://github.com/halide/Halide/releases/download/v${HALIDE_VERSION}/Halide-${HALIDE_VERSION}-x86-64-linux.tar.gz"
+          tar -xzf halide.tar.gz
+          echo "HALIDE_DISTRIB_DIR=${GITHUB_WORKSPACE}/Halide-${HALIDE_VERSION}-x86-64-linux" >> "$GITHUB_ENV"
+
+      - name: Clone vcpkg
+        uses: actions/checkout@v4
+        with:
+          repository: microsoft/vcpkg
+          path: vcpkg
+
+      - name: Bootstrap vcpkg
+        run: ./bootstrap-vcpkg.sh
+        working-directory: vcpkg
+
+      - name: Install Android dependencies
+        run: |
+          ./vcpkg install libraw libtiff libjpeg-turbo libpng zlib --triplet=${VCPKG_TARGET_TRIPLET}
+          echo "ANDROID_DEPS_ROOT=${GITHUB_WORKSPACE}/vcpkg/installed/${VCPKG_TARGET_TRIPLET}" >> "$GITHUB_ENV"
+
+      - name: Build Halide generator (host)
+        run: |
+          cmake -S . -B build/host -G Ninja \
+            -DHALIDE_DISTRIB_DIR="${HALIDE_DISTRIB_DIR}"
+          cmake --build build/host --target align_and_merge_generator
+
+      - name: Generate Halide library for Android
+        run: |
+          mkdir -p build/halide_gen
+          build/host/align_and_merge_generator \
+            -g align_and_merge \
+            -o build/halide_gen \
+            target=arm-64-android
+          echo "HALIDE_GEN_DIR=${GITHUB_WORKSPACE}/build/halide_gen" >> "$GITHUB_ENV"
+
+      - name: Configure Android build
+        run: |
+          cmake -S . -B build/android -G Ninja \
+            -DANDROID=ON \
+            -DANDROID_ABI=${ANDROID_ABI} \
+            -DANDROID_PLATFORM=${ANDROID_PLATFORM} \
+            -DANDROID_NDK=${ANDROID_NDK_HOME} \
+            -DCMAKE_TOOLCHAIN_FILE=${ANDROID_NDK_HOME}/build/cmake/android.toolchain.cmake \
+            -DHALIDE_DISTRIB_DIR="${HALIDE_DISTRIB_DIR}" \
+            -DHALIDE_GEN_DIR="${HALIDE_GEN_DIR}" \
+            -DANDROID_DEPS_ROOT="${ANDROID_DEPS_ROOT}"
+
+      - name: Build Android .so
+        run: cmake --build build/android --target hdrplus_jni
+
+      - name: Upload .so artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: libhdrplus_jni-${{ env.ANDROID_ABI }}
+          path: build/android/libhdrplus_jni.so

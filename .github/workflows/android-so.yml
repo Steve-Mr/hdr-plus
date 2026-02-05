@@ -36,8 +36,9 @@ jobs:
       - name: Fetch Halide distribution
         run: |
           curl -L -o halide.tar.gz "https://github.com/halide/Halide/releases/download/v${HALIDE_VERSION}/Halide-${HALIDE_VERSION}-x86-64-linux-${HALIDE_REVISION}.tar.gz"
+          HALIDE_TAR_DIR="$(tar -tzf halide.tar.gz | head -1 | cut -d/ -f1)"
           tar -xzf halide.tar.gz
-          HALIDE_DISTRIB_DIR="${GITHUB_WORKSPACE}/Halide-${HALIDE_VERSION}-x86-64-linux-${HALIDE_REVISION}"
+          HALIDE_DISTRIB_DIR="${GITHUB_WORKSPACE}/${HALIDE_TAR_DIR}"
           HALIDE_CMAKE_DIR="$(find "$HALIDE_DISTRIB_DIR" -name HalideConfig.cmake -print -quit | xargs dirname)"
           echo "HALIDE_DISTRIB_DIR=${HALIDE_DISTRIB_DIR}" >> "$GITHUB_ENV"
           echo "HALIDE_CMAKE_DIR=${HALIDE_CMAKE_DIR}" >> "$GITHUB_ENV"

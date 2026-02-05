@@ -1,0 +1,56 @@
+name: Build Android
+
+on:
+  push:
+    branches: [ "master", "main" ]
+  pull_request:
+    branches: [ "master", "main" ]
+  workflow_dispatch:
+
+jobs:
+  build-android:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Java
+      uses: actions/setup-java@v4
+      with:
+        distribution: 'temurin'
+        java-version: '17'
+
+    - name: Set up Android NDK
+      uses: nttld/setup-ndk@v1
+      with:
+        ndk-version: r26b
+        link-to-sdk: true
+
+    - name: Install Host Dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y libraw-dev libtiff-dev libpng-dev libjpeg-dev zlib1g-dev
+
+    - name: Download and Setup Halide
+      run: |
+        wget https://github.com/halide/Halide/releases/download/v21.0.0/Halide-21.0.0-x86-64-linux-b629c80de18f1534ec71fddd8b567aa7027a0876.tar.gz
+        tar -xzf Halide-21.0.0-x86-64-linux-b629c80de18f1534ec71fddd8b567aa7027a0876.tar.gz
+        echo "HALIDE_DISTRIB_DIR=$(pwd)/Halide-21.0.0-x86-64-linux-b629c80de18f1534ec71fddd8b567aa7027a0876" >> $GITHUB_ENV
+        # Also add to CMAKE_PREFIX_PATH for the host build to find it
+        echo "CMAKE_PREFIX_PATH=$(pwd)/Halide-21.0.0-x86-64-linux-b629c80de18f1534ec71fddd8b567aa7027a0876" >> $GITHUB_ENV
+
+    - name: Build Android Dependencies
+      run: |
+        chmod +x android_utils/build_deps.sh
+        ./android_utils/build_deps.sh
+
+    - name: Build Android Shared Library
+      run: |
+        chmod +x android_utils/build_android.sh
+        ./android_utils/build_android.sh
+
+    - name: Upload Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: libhdrplus_jni.so
+        path: android_utils/build/android_project/libhdrplus_jni.so

@@ -51,7 +51,7 @@ jobs:
 
       - name: Install Android dependencies
         run: |
-          ./vcpkg install libraw libtiff libjpeg-turbo libpng zlib --triplet=${VCPKG_TARGET_TRIPLET}
+          ./vcpkg/vcpkg install libraw libtiff libjpeg-turbo libpng zlib --triplet=${VCPKG_TARGET_TRIPLET}
           echo "ANDROID_DEPS_ROOT=${GITHUB_WORKSPACE}/vcpkg/installed/${VCPKG_TARGET_TRIPLET}" >> "$GITHUB_ENV"
 
       - name: Build Halide generator (host)

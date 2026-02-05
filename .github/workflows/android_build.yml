@@ -16,13 +16,30 @@ jobs:
 
     - name: Setup Android NDK
       uses: nttld/setup-ndk@v1
+      id: setup_ndk
       with:
         ndk-version: r26b
+
+    - name: Export Android NDK Environment
+      run: |
+        echo "ANDROID_NDK_ROOT=${{ steps.setup_ndk.outputs.ndk-path }}" >> $GITHUB_ENV
+        echo "ANDROID_NDK_HOME=${{ steps.setup_ndk.outputs.ndk-path }}" >> $GITHUB_ENV
 
     - name: Install Host Dependencies (Apt)
       run: |
         sudo apt-get update
-        sudo apt-get install -y libpng-dev libjpeg-dev libtiff-dev libraw-dev zlib1g-dev
+        sudo apt-get install -y \
+          autoconf \
+          automake \
+          build-essential \
+          cmake \
+          libtool \
+          pkg-config \
+          libpng-dev \
+          libjpeg-dev \
+          libtiff-dev \
+          libraw-dev \
+          zlib1g-dev
 
     - name: Install Host Dependencies (Halide)
       run: |

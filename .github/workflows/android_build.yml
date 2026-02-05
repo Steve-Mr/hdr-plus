@@ -10,6 +10,12 @@ on:
 jobs:
   build-android:
     runs-on: ubuntu-latest
+    env:
+      ANDROID_ABI: arm64-v8a
+      ANDROID_PLATFORM: android-26
+      INSTALL_DIR: ${{ github.workspace }}/android_utils/install
+      DOWNLOAD_DIR: ${{ github.workspace }}/android_utils/downloads
+      BUILD_DIR: ${{ github.workspace }}/android_utils/build_deps
 
     steps:
     - uses: actions/checkout@v4
@@ -36,13 +42,131 @@ jobs:
         wget https://github.com/halide/Halide/releases/download/v21.0.0/Halide-21.0.0-x86-64-linux-b629c80de18f1534ec71fddd8b567aa7027a0876.tar.gz
         tar -xzf Halide-21.0.0-x86-64-linux-b629c80de18f1534ec71fddd8b567aa7027a0876.tar.gz
         echo "HALIDE_DISTRIB_DIR=$(pwd)/Halide-21.0.0-x86-64-linux-b629c80de18f1534ec71fddd8b567aa7027a0876" >> $GITHUB_ENV
-        # Also add to CMAKE_PREFIX_PATH for the host build to find it
         echo "CMAKE_PREFIX_PATH=$(pwd)/Halide-21.0.0-x86-64-linux-b629c80de18f1534ec71fddd8b567aa7027a0876" >> $GITHUB_ENV
 
-    - name: Build Android Dependencies
+    - name: Create Build Directories
       run: |
-        chmod +x android_utils/build_deps.sh
-        ./android_utils/build_deps.sh
+        mkdir -p ${{ env.INSTALL_DIR }}
+        mkdir -p ${{ env.DOWNLOAD_DIR }}
+        mkdir -p ${{ env.BUILD_DIR }}
+
+    - name: Build ZLIB
+      run: |
+        cd ${{ env.DOWNLOAD_DIR }}
+        wget -c https://www.zlib.net/zlib-1.3.1.tar.gz -O zlib.tar.gz --no-check-certificate
+        tar -xzf zlib.tar.gz
+
+        mkdir -p ${{ env.BUILD_DIR }}/zlib
+        cd ${{ env.BUILD_DIR }}/zlib
+        cmake ${{ env.DOWNLOAD_DIR }}/zlib-1.3.1 \
+          -G "Unix Makefiles" \
+          -DCMAKE_TOOLCHAIN_FILE=${{ env.ANDROID_NDK_ROOT }}/build/cmake/android.toolchain.cmake \
+          -DANDROID_ABI=${{ env.ANDROID_ABI }} \
+          -DANDROID_PLATFORM=${{ env.ANDROID_PLATFORM }} \
+          -DCMAKE_INSTALL_PREFIX=${{ env.INSTALL_DIR }} \
+          -DCMAKE_BUILD_TYPE=Release \
+          -DCMAKE_POSITION_INDEPENDENT_CODE=ON
+        cmake --build . --target install --config Release -j$(nproc)
+
+    - name: Build libjpeg-turbo
+      run: |
+        cd ${{ env.DOWNLOAD_DIR }}
+        wget -c https://github.com/libjpeg-turbo/libjpeg-turbo/archive/refs/tags/3.0.1.tar.gz -O libjpeg.tar.gz --no-check-certificate
+        tar -xzf libjpeg.tar.gz
+
+        mkdir -p ${{ env.BUILD_DIR }}/libjpeg
+        cd ${{ env.BUILD_DIR }}/libjpeg
+        cmake ${{ env.DOWNLOAD_DIR }}/libjpeg-turbo-3.0.1 \
+          -G "Unix Makefiles" \
+          -DCMAKE_TOOLCHAIN_FILE=${{ env.ANDROID_NDK_ROOT }}/build/cmake/android.toolchain.cmake \
+          -DANDROID_ABI=${{ env.ANDROID_ABI }} \
+          -DANDROID_PLATFORM=${{ env.ANDROID_PLATFORM }} \
+          -DCMAKE_INSTALL_PREFIX=${{ env.INSTALL_DIR }} \
+          -DCMAKE_BUILD_TYPE=Release \
+          -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
+          -DWITH_JPEG8=1 \
+          -DENABLE_SHARED=OFF \
+          -DENABLE_STATIC=ON
+        cmake --build . --target install --config Release -j$(nproc)
+
+    - name: Build LibPNG
+      run: |
+        cd ${{ env.DOWNLOAD_DIR }}
+        wget -c https://download.sourceforge.net/libpng/libpng-1.6.40.tar.gz -O libpng.tar.gz --no-check-certificate
+        tar -xzf libpng.tar.gz
+
+        mkdir -p ${{ env.BUILD_DIR }}/libpng
+        cd ${{ env.BUILD_DIR }}/libpng
+        cmake ${{ env.DOWNLOAD_DIR }}/libpng-1.6.40 \
+          -G "Unix Makefiles" \
+          -DCMAKE_TOOLCHAIN_FILE=${{ env.ANDROID_NDK_ROOT }}/build/cmake/android.toolchain.cmake \
+          -DANDROID_ABI=${{ env.ANDROID_ABI }} \
+          -DANDROID_PLATFORM=${{ env.ANDROID_PLATFORM }} \
+          -DCMAKE_INSTALL_PREFIX=${{ env.INSTALL_DIR }} \
+          -DCMAKE_BUILD_TYPE=Release \
+          -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
+          -DPNG_SHARED=OFF \
+          -DPNG_STATIC=ON \
+          -DZLIB_ROOT=${{ env.INSTALL_DIR }} \
+          -DZLIB_LIBRARY=${{ env.INSTALL_DIR }}/lib/libz.a \
+          -DZLIB_INCLUDE_DIR=${{ env.INSTALL_DIR }}/include
+        cmake --build . --target install --config Release -j$(nproc)
+
+    - name: Build LibTIFF
+      run: |
+        cd ${{ env.DOWNLOAD_DIR }}
+        wget -c https://download.osgeo.org/libtiff/tiff-4.6.0.tar.gz -O tiff.tar.gz --no-check-certificate
+        tar -xzf tiff.tar.gz
+
+        mkdir -p ${{ env.BUILD_DIR }}/libtiff
+        cd ${{ env.BUILD_DIR }}/libtiff
+        cmake ${{ env.DOWNLOAD_DIR }}/tiff-4.6.0 \
+          -G "Unix Makefiles" \
+          -DCMAKE_TOOLCHAIN_FILE=${{ env.ANDROID_NDK_ROOT }}/build/cmake/android.toolchain.cmake \
+          -DANDROID_ABI=${{ env.ANDROID_ABI }} \
+          -DANDROID_PLATFORM=${{ env.ANDROID_PLATFORM }} \
+          -DCMAKE_INSTALL_PREFIX=${{ env.INSTALL_DIR }} \
+          -DCMAKE_BUILD_TYPE=Release \
+          -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
+          -DBUILD_SHARED_LIBS=OFF \
+          -DZLIB_ROOT=${{ env.INSTALL_DIR }} \
+          -DZLIB_LIBRARY=${{ env.INSTALL_DIR }}/lib/libz.a \
+          -DZLIB_INCLUDE_DIR=${{ env.INSTALL_DIR }}/include \
+          -DJPEG_ROOT=${{ env.INSTALL_DIR }} \
+          -DJPEG_LIBRARY=${{ env.INSTALL_DIR }}/lib/libjpeg.a \
+          -DJPEG_INCLUDE_DIR=${{ env.INSTALL_DIR }}/include
+        cmake --build . --target install --config Release -j$(nproc)
+
+    - name: Build LibRaw
+      run: |
+        cd ${{ env.DOWNLOAD_DIR }}
+        wget -c https://www.libraw.org/data/LibRaw-0.21.2.tar.gz -O libraw.tar.gz --no-check-certificate
+        tar -xzf libraw.tar.gz
+
+        mkdir -p ${{ env.BUILD_DIR }}/libraw
+        cd ${{ env.BUILD_DIR }}/libraw
+        cmake ${{ env.DOWNLOAD_DIR }}/LibRaw-0.21.2 \
+          -G "Unix Makefiles" \
+          -DCMAKE_TOOLCHAIN_FILE=${{ env.ANDROID_NDK_ROOT }}/build/cmake/android.toolchain.cmake \
+          -DANDROID_ABI=${{ env.ANDROID_ABI }} \
+          -DANDROID_PLATFORM=${{ env.ANDROID_PLATFORM }} \
+          -DCMAKE_INSTALL_PREFIX=${{ env.INSTALL_DIR }} \
+          -DCMAKE_BUILD_TYPE=Release \
+          -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
+          -DBUILD_SHARED_LIBS=OFF \
+          -DENABLE_EXAMPLES=OFF \
+          -DENABLE_RAWSPEED=OFF \
+          -DENABLE_LIBRAW_CUDA=OFF \
+          -DENABLE_OPENMP=OFF \
+          -DZLIB_ROOT=${{ env.INSTALL_DIR }} \
+          -DZLIB_LIBRARY=${{ env.INSTALL_DIR }}/lib/libz.a \
+          -DZLIB_INCLUDE_DIR=${{ env.INSTALL_DIR }}/include \
+          -DJPEG_ROOT=${{ env.INSTALL_DIR }} \
+          -DJPEG_LIBRARY=${{ env.INSTALL_DIR }}/lib/libjpeg.a \
+          -DJPEG_INCLUDE_DIR=${{ env.INSTALL_DIR }}/include \
+          -DENABLE_JPEG=ON \
+          -DENABLE_ZLIB=ON
+        cmake --build . --target install --config Release -j$(nproc)
 
     - name: Build Android Shared Library
       run: |

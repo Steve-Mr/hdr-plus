@@ -1,0 +1,78 @@
+name: Android Build
+
+on:
+  push:
+    branches: [ "main", "master" ]
+  pull_request:
+    branches: [ "main", "master" ]
+  workflow_dispatch:
+
+jobs:
+  build-android:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Setup Android NDK
+      uses: nttld/setup-ndk@v1
+      id: setup_ndk
+      with:
+        ndk-version: r26b
+
+    - name: Export Android NDK Environment
+      run: |
+        echo "ANDROID_NDK_ROOT=${{ steps.setup_ndk.outputs.ndk-path }}" >> $GITHUB_ENV
+        echo "ANDROID_NDK_HOME=${{ steps.setup_ndk.outputs.ndk-path }}" >> $GITHUB_ENV
+
+    - name: Install Host Dependencies (Apt)
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          autoconf \
+          automake \
+          build-essential \
+          cmake \
+          libtool \
+          pkg-config \
+          libpng-dev \
+          libjpeg-dev \
+          libtiff-dev \
+          libraw-dev \
+          zlib1g-dev
+
+    - name: Install Host Dependencies (Halide)
+      run: |
+        # Download Halide 21.0.0 for Linux x86-64
+        wget -q https://github.com/halide/Halide/releases/download/v21.0.0/Halide-21.0.0-x86-64-linux-b629c80de18f1534ec71fddd8b567aa7027a0876.tar.gz -O halide.tar.gz
+        mkdir -p halide_distrib
+        tar -xzf halide.tar.gz -C halide_distrib --strip-components=1
+
+        # Set environment variable for CMake to find Halide
+        echo "HALIDE_DISTRIB_DIR=$(pwd)/halide_distrib" >> $GITHUB_ENV
+
+        # Verify
+        ls -F halide_distrib/
+        ls -F halide_distrib/include/
+
+    - name: Build Android Dependencies
+      run: |
+        chmod +x android_utils/build_deps.sh
+        ./android_utils/build_deps.sh
+
+    - name: Build Android Library
+      run: |
+        chmod +x android_utils/build_android.sh
+        ./android_utils/build_android.sh
+
+    - name: Prepare Artifacts
+      run: |
+        mkdir -p artifacts
+        cp android_utils/build/android_project/libhdrplus_jni.so artifacts/
+        cp src/java/top/maary/darkbag/hdrplus/NativeHDRPlus.java artifacts/
+
+    - name: Upload Artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: hdrplus-android-lib
+        path: artifacts/

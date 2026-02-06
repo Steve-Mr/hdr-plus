@@ -32,11 +32,17 @@ if(ANDROID)
     if(DEFINED ANDROID_DEPS_ROOT)
         list(APPEND CMAKE_PREFIX_PATH ${ANDROID_DEPS_ROOT})
         set(CMAKE_FIND_ROOT_PATH ${ANDROID_DEPS_ROOT})
+        list(APPEND HDRPLUS_EXTRA_INCLUDE_DIRS
+            ${ANDROID_DEPS_ROOT}/include
+        )
     endif()
 
     find_package(Halide REQUIRED)
     # Get Halide include directory from the package
     get_target_property(HALIDE_INCLUDE_DIR Halide::Halide INTERFACE_INCLUDE_DIRECTORIES)
+    list(APPEND HDRPLUS_EXTRA_INCLUDE_DIRS
+        ${HALIDE_INCLUDE_DIR}
+    )
 
     find_library(LIBRAW_LIBRARY NAMES raw raw_r)
     find_library(TIFF_LIBRARY NAMES tiff)

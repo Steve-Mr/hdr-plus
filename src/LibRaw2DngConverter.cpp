@@ -6,10 +6,62 @@
 
 #include "InputSource.h"
 
+#if !defined(ANDROID)
+#include <tiffio.hxx>
+#endif
+
+namespace {
+#if defined(ANDROID)
+tsize_t TiffRead(thandle_t, tdata_t, tsize_t) { return 0; }
+
+tsize_t TiffWrite(thandle_t handle, tdata_t data, tsize_t size) {
+  auto *stream = static_cast<std::ostringstream *>(handle);
+  stream->write(static_cast<const char *>(data), size);
+  return stream->good() ? size : 0;
+}
+
+toff_t TiffSeek(thandle_t handle, toff_t offset, int whence) {
+  auto *stream = static_cast<std::ostringstream *>(handle);
+  std::ios_base::seekdir dir = std::ios_base::beg;
+  if (whence == SEEK_CUR) {
+    dir = std::ios_base::cur;
+  } else if (whence == SEEK_END) {
+    dir = std::ios_base::end;
+  }
+  stream->seekp(offset, dir);
+  return static_cast<toff_t>(stream->tellp());
+}
+
+toff_t TiffSize(thandle_t handle) {
+  auto *stream = static_cast<std::ostringstream *>(handle);
+  auto current = stream->tellp();
+  stream->seekp(0, std::ios_base::end);
+  auto size = stream->tellp();
+  stream->seekp(current);
+  return static_cast<toff_t>(size);
+}
+
+int TiffClose(thandle_t) { return 0; }
+
+int TiffMap(thandle_t, tdata_t *, toff_t *) { return 0; }
+
+void TiffUnmap(thandle_t, tdata_t, toff_t) {}
+#endif
+
+TIFF *OpenTiffStream(std::ostringstream *stream) {
+#if defined(ANDROID)
+  return TIFFClientOpen("", "w", static_cast<thandle_t>(stream), TiffRead,
+                        TiffWrite, TiffSeek, TiffClose, TiffSize, TiffMap,
+                        TiffUnmap);
+#else
+  return TIFFStreamOpen("", stream);
+#endif
+}
+} // namespace
+
 LibRaw2DngConverter::LibRaw2DngConverter(const RawImage &raw)
     : OutputStream(), Raw(raw),
-      Tiff(SetTiffFields(
-          TiffPtr(TIFFStreamOpen("", &OutputStream), TIFFClose))) {}
+      Tiff(SetTiffFields(TiffPtr(OpenTiffStream(&OutputStream), TIFFClose))) {}
 
 LibRaw2DngConverter::TiffPtr
 LibRaw2DngConverter::SetTiffFields(LibRaw2DngConverter::TiffPtr tiff_ptr) {

@@ -3,7 +3,6 @@
 #include <sstream>
 #include <vector>
 #include <tiffio.h>
-#include <tiffio.hxx>
 
 #include <HalideBuffer.h>
 

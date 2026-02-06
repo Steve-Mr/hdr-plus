@@ -32,6 +32,9 @@ if(ANDROID)
     if(DEFINED ANDROID_DEPS_ROOT)
         list(APPEND CMAKE_PREFIX_PATH ${ANDROID_DEPS_ROOT})
         set(CMAKE_FIND_ROOT_PATH ${ANDROID_DEPS_ROOT})
+        set(HDRPLUS_EXTRA_INCLUDE_DIRS
+            ${ANDROID_DEPS_ROOT}/include
+        )
     endif()
 
     find_package(Halide REQUIRED)

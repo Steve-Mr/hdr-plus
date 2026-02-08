@@ -150,7 +150,7 @@ Func merge_spatial(Func input) {
   // schedule
   ///////////////////////////////////////////////////////////////////////////
 
-  weight.compute_root().vectorize(v, 8);
+  weight.compute_root().vectorize(v, 4); // 4 floats = 128 bits for NEON
 
   Var xo("xo"), xi("xi"), yo("yo"), yi("yi");
   // Tile the spatial merge to 256x128 blocks

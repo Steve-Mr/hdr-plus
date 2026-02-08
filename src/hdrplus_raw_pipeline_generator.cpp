@@ -19,10 +19,10 @@ Func black_white_level(Func input, const Expr bp, const Expr wp) {
   Expr white_factor = (65535.f / (wp - bp)) * 0.25f;
   output(x, y) = u16_sat((i32(input(x, y)) - bp) * white_factor);
 
-  Var xi, yi;
+  Var xo, yo, xi, yi;
   output.compute_root()
-        .tile(x, y, xi, yi, 256, 128)
-        .parallel(y)
+        .tile(x, y, xo, yo, xi, yi, 256, 128)
+        .parallel(yo)
         .vectorize(xi, 8);
   return output;
 }
@@ -51,10 +51,10 @@ Func white_balance(Func input, Expr width, Expr height,
   output(r.x * 2 + 1, r.y * 2 + 1) = apply_wb_safe(input(r.x * 2 + 1, r.y * 2 + 1), wb.b);
 
   // Schedule
-  Var xi, yi;
+  Var xo, yo, xi, yi;
   output.compute_root()
-        .tile(x, y, xi, yi, 256, 128)
-        .parallel(y)
+        .tile(x, y, xo, yo, xi, yi, 256, 128)
+        .parallel(yo)
         .vectorize(xi, 8); // Vectorize initialization
 
   // Vectorize updates. r.x corresponds to width/2. Vectorizing r.x by 8 processes 8 pairs.
@@ -174,14 +174,14 @@ Func bilateral_filter(Func input, Expr width, Expr height) {
   output.compute_root()
         .tile(x, y, xo, yo, xi, yi, 256, 128)
         .parallel(yo)
-        .vectorize(xi, 8); // Float operations, vectorize 4/8? 8 is fine.
+        .vectorize(xi, 4); // 4 floats = 128 bits for NEON
 
-  output.update(0).tile(x, y, xo, yo, xi, yi, 256, 128).parallel(yo).vectorize(xi, 8);
-  output.update(1).tile(x, y, xo, yo, xi, yi, 256, 128).parallel(yo).vectorize(xi, 8);
+  output.update(0).tile(x, y, xo, yo, xi, yi, 256, 128).parallel(yo).vectorize(xi, 4);
+  output.update(1).tile(x, y, xo, yo, xi, yi, 256, 128).parallel(yo).vectorize(xi, 4);
 
   // Compute weights at inner tile loop (per row or block?)
   // Compute at y loop of output update.
-  weights.compute_at(output, yo).vectorize(x, 8);
+  weights.compute_at(output, yo).vectorize(x, 4);
 
   return output;
 }
@@ -201,7 +201,7 @@ Func desaturate_noise(Func input, Expr width, Expr height) {
   output.compute_root()
         .tile(x, y, xo, yo, xi, yi, 256, 128)
         .parallel(yo)
-        .vectorize(xi, 8);
+        .vectorize(xi, 4); // 4 floats = 128 bits for NEON
   return output;
 }
 
@@ -215,7 +215,7 @@ Func increase_saturation(Func input, float strength) {
   output.compute_root()
         .tile(x, y, xo, yo, xi, yi, 256, 128)
         .parallel(yo)
-        .vectorize(xi, 8);
+        .vectorize(xi, 4); // 4 floats = 128 bits for NEON
   return output;
 }
 
@@ -242,7 +242,7 @@ Func srgb(Func input, Func srgb_matrix) {
   output.compute_root()
         .tile(x, y, xo, yo, xi, yi, 256, 128)
         .parallel(yo)
-        .vectorize(xi, 8);
+        .vectorize(xi, 4); // 4 floats = 128 bits for NEON
   return output;
 }
 

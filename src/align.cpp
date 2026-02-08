@@ -60,9 +60,13 @@ Func align_layer(Func layer, Func prev_alignment, Point prev_min,
   // schedule
   ///////////////////////////////////////////////////////////////////////////
 
-  scores.compute_at(alignment, tx).vectorize(xi, 8);
-
-  alignment.compute_root().parallel(ty).vectorize(tx, 16);
+  // Tiling and vectorization optimization for ARM NEON
+  Var txo("txo"), txi("txi"), tyo("tyo"), tyi("tyi");
+  alignment.compute_root()
+           .tile(tx, ty, txo, tyo, txi, tyi, 32, 16)
+           .parallel(tyo)
+           .vectorize(txi, 8);
+  scores.compute_at(alignment, txi).vectorize(xi, 8);
 
   return alignment;
 }

@@ -46,6 +46,14 @@ add_halide_library(hdrplus_pipeline
     # EXTRA_OUTPUTS "stmt;html;schedule") # uncomment for extra output
 )
 
+add_executable(hdrplus_raw_pipeline_generator src/hdrplus_raw_pipeline_generator.cpp src/align.cpp src/merge.cpp src/util.cpp)
+target_include_directories(hdrplus_raw_pipeline_generator PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(hdrplus_raw_pipeline_generator PRIVATE Halide::Generator)
+add_halide_library(hdrplus_raw_pipeline
+    FROM hdrplus_raw_pipeline_generator
+    FUNCTION_NAME hdrplus_raw_pipeline
+)
+
 add_executable(align_and_merge_generator src/align_and_merge_generator.cpp src/align.cpp src/merge.cpp src/util.cpp)
 target_include_directories(align_and_merge_generator PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(align_and_merge_generator PRIVATE Halide::Generator)

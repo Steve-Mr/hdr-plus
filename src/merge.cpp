@@ -95,11 +95,18 @@ Func merge_temporal(Halide::Func imgs, Expr width, Expr height, Expr frames,
   // schedule
   ///////////////////////////////////////////////////////////////////////////
 
-  weight.compute_root().parallel(ty).vectorize(tx, 16);
+  Var txo("txo"), txi("txi"), tyo("tyo"), tyi("tyi");
 
-  total_weight.compute_root().parallel(ty).vectorize(tx, 16);
+  // Output is tiled (32x16 tiles). Inner loops over pixels (ix, iy).
+  // Vectorize ix (16 pixels) -> 16 uint16 = 256 bits (2 vectors). 8 is better.
+  output.compute_root()
+        .tile(tx, ty, txo, tyo, txi, tyi, 32, 16)
+        .parallel(tyo)
+        .vectorize(ix, 8);
 
-  output.compute_root().parallel(ty).vectorize(ix, 32);
+  // Compute weights at the tile block level to improve locality
+  weight.compute_at(output, txo).vectorize(tx, 8);
+  total_weight.compute_at(output, txo).vectorize(tx, 8);
 
   return output;
 }
@@ -143,9 +150,14 @@ Func merge_spatial(Func input) {
   // schedule
   ///////////////////////////////////////////////////////////////////////////
 
-  weight.compute_root().vectorize(v, 32);
+  weight.compute_root().vectorize(v, 8);
 
-  output.compute_root().parallel(y).vectorize(x, 32);
+  Var xo("xo"), xi("xi"), yo("yo"), yi("yi");
+  // Tile the spatial merge to 256x128 blocks
+  output.compute_root()
+        .tile(x, y, xo, yo, xi, yi, 256, 128)
+        .parallel(yo)
+        .vectorize(xi, 8);
 
   return output;
 }

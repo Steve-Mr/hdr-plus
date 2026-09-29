@@ -158,6 +158,15 @@ Func align(const Halide::Func imgs, Halide::Expr width, Halide::Expr height) {
   return align(imgs, width, height, Func(), Func());
 }
 
+Func align(const Halide::Func imgs, Halide::Expr width, Halide::Expr height,
+           Halide::Expr gyro_x, Halide::Expr gyro_y) {
+  Func gx("gyro_x_func"), gy("gyro_y_func");
+  Var n("n");
+  gx(n) = select(n == 0, 0.0f, gyro_x);
+  gy(n) = select(n == 0, 0.0f, gyro_y);
+  return align(imgs, width, height, gx, gy);
+}
+
 Halide::Func align(Halide::Buffer<uint16_t> imgs) {
   Halide::Func imgs_function(imgs);
   return align(imgs_function, imgs.width(), imgs.height());

@@ -17,51 +17,40 @@ using namespace Halide::ConciseCasts;
  *
  * Enhanced with dynamic noise thresholding and DilateMask morphological ghost rejection.
  */
-Func merge_temporal(Halide::Func imgs, Expr width, Expr height, Expr frames,
-                    Func alignment) {
+/*
+ * merge_temporal_weights -- computes temporal motion weights for tiles of aligned frames,
+ * using dynamic shot noise thresholding and 3x3 DilateMask morphological ghost rejection.
+ */
+Func merge_temporal_weights(Halide::Func imgs, Expr width, Expr height,
+                            Func alignment) {
 
   Func weight("merge_temporal_weights");
-  Func total_weight("merge_temporal_total_weights");
-  Func output("merge_temporal_output");
 
-  Var ix, iy, tx, ty, n;
-  RDom r0(0, 16, 0, 16);  // reduction over pixels in downsampled tile
-  RDom r1(1, frames - 1); // reduction over alternate images
+  Var tx, ty, n;
+  RDom r0(0, 16, 0, 16); // reduction over pixels in downsampled tile
 
   // mirror input with overlapping edges
-
   Func imgs_mirror = BoundaryConditions::mirror_interior(
       imgs, {Range(0, width), Range(0, height)});
 
   // downsampled layer for computing L1 distances
-
   Func layer = box_down2(imgs_mirror, "merge_layer");
 
-  // alignment offset, indicies and pixel value expressions; used twice in
-  // different reductions
+  Point offset = clamp(P(alignment(tx, ty, n)), P(MIN_OFFSET, MIN_OFFSET),
+                       P(MAX_OFFSET, MAX_OFFSET));
 
-  Point offset;
-  Expr al_x, al_y, ref_val, alt_val;
+  Expr al_x = idx_layer(tx, r0.x) + offset.x / 2;
+  Expr al_y = idx_layer(ty, r0.y) + offset.y / 2;
 
-  // expressions for summing over pixels in each tile
-
-  offset = clamp(P(alignment(tx, ty, n)), P(MIN_OFFSET, MIN_OFFSET),
-                 P(MAX_OFFSET, MAX_OFFSET));
-
-  al_x = idx_layer(tx, r0.x) + offset.x / 2;
-  al_y = idx_layer(ty, r0.y) + offset.y / 2;
-
-  ref_val = layer(idx_layer(tx, r0.x), idx_layer(ty, r0.y), 0);
-  alt_val = layer(al_x, al_y, n);
+  Expr ref_val = layer(idx_layer(tx, r0.x), idx_layer(ty, r0.y), 0);
+  Expr alt_val = layer(al_x, al_y, n);
 
   // constants for determining strength and robustness of temporal merge
-
   float factor = 8.f; // factor by which inverse function is elongated
   int min_dist = 10;  // pixel L1 distance below which weight is maximal
   int max_dist = 300; // pixel L1 distance above which weight is zero
 
   // average L1 distance in tile
-
   Expr dist = sum(abs(i32(ref_val) - i32(alt_val))) / 256;
 
   // Dynamic noise thresholding:
@@ -122,23 +111,44 @@ Func merge_temporal(Halide::Func imgs, Expr width, Expr height, Expr frames,
                                     raw_weight(tx, ty, n) * motion_atten,
                                     raw_weight(tx, ty, n)));
 
-  // total weight for each tile in a temporal stack of images
+  ///////////////////////////////////////////////////////////////////////////
+  // schedule
+  ///////////////////////////////////////////////////////////////////////////
 
+  raw_weight.compute_root().parallel(ty).vectorize(tx, 16);
+  motion_mask.compute_root().parallel(ty).vectorize(tx, 16);
+  weight.compute_root().parallel(ty).vectorize(tx, 16);
+
+  return weight;
+}
+
+Func merge_temporal(Halide::Func imgs, Expr width, Expr height, Expr frames,
+                    Func alignment) {
+
+  Func weight = merge_temporal_weights(imgs, width, height, alignment);
+  Func total_weight("merge_temporal_total_weights");
+  Func output("merge_temporal_output");
+
+  Var ix, iy, tx, ty;
+  RDom r1(1, frames - 1); // reduction over alternate images
+
+  Func imgs_mirror = BoundaryConditions::mirror_interior(
+      imgs, {Range(0, width), Range(0, height)});
+
+  // total weight for each tile in a temporal stack of images
   total_weight(tx, ty) = sum(weight(tx, ty, r1)) +
                          1.f; // additional 1.f accounting for reference image
 
   // expressions for summing over images at each pixel
+  Point offset = P(alignment(tx, ty, r1));
 
-  offset = P(alignment(tx, ty, r1));
+  Expr al_x = idx_im(tx, ix) + offset.x;
+  Expr al_y = idx_im(ty, iy) + offset.y;
 
-  al_x = idx_im(tx, ix) + offset.x;
-  al_y = idx_im(ty, iy) + offset.y;
-
-  ref_val = imgs_mirror(idx_im(tx, ix), idx_im(ty, iy), 0);
-  alt_val = imgs_mirror(al_x, al_y, r1);
+  Expr ref_val = imgs_mirror(idx_im(tx, ix), idx_im(ty, iy), 0);
+  Expr alt_val = imgs_mirror(al_x, al_y, r1);
 
   // temporal merge function using weighted pixel values
-
   output(ix, iy, tx, ty) =
       sum(weight(tx, ty, r1) * alt_val / total_weight(tx, ty)) +
       ref_val / total_weight(tx, ty);
@@ -147,14 +157,7 @@ Func merge_temporal(Halide::Func imgs, Expr width, Expr height, Expr frames,
   // schedule
   ///////////////////////////////////////////////////////////////////////////
 
-  raw_weight.compute_root().parallel(ty).vectorize(tx, 16);
-
-  motion_mask.compute_root().parallel(ty).vectorize(tx, 16);
-
-  weight.compute_root().parallel(ty).vectorize(tx, 16);
-
   total_weight.compute_root().parallel(ty).vectorize(tx, 16);
-
   output.compute_root().parallel(ty).vectorize(ix, 32);
 
   return output;

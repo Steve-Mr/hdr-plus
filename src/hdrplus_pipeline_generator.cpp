@@ -1,5 +1,6 @@
 #include <Halide.h>
 
+#include "Point.h"
 #include "align.h"
 #include "finish.h"
 #include "merge.h"
@@ -430,6 +431,117 @@ private:
   }
 };
 
+/**
+ * HdrPlusAccumulatePipeline -- Single-step pairwise streaming accumulation pipeline.
+ *
+ * Mathematical model:
+ *   Accumulates one alternate frame into the running 2D float accumulator:
+ *     accum_val_out(x, y) = accum_val_in(x, y) + S(x, y)
+ *     accum_weight_out(x, y) = accum_weight_in(x, y) + W(x, y)
+ *
+ * Host Initialization Contract:
+ *   1. Frame 0 (Reference Frame): Host initializes accum_val = (float)ref_frame, accum_weight = 1.0f.
+ *   2. Frames 1..N-1 (Alternate Frames): Host calls this pipeline iteratively for each arriving frame.
+ *   3. Buffering rule: Inputs and outputs must NOT alias. Host must maintain ping-pong double buffers.
+ *   4. Finalization: Host normalizes merged_bayer = accum_val / max(0.001f, accum_weight) and feeds into single_pipeline.
+ */
+class HdrPlusAccumulatePipeline : public Generator<HdrPlusAccumulatePipeline> {
+public:
+  Input<Buffer<uint16_t>> ref_frame{"ref_frame", 2};
+  Input<Buffer<uint16_t>> alt_frame{"alt_frame", 2};
+  Input<Buffer<float>> accum_val_in{"accum_val_in", 2};
+  Input<Buffer<float>> accum_weight_in{"accum_weight_in", 2};
+  Input<float> gyro_x{"gyro_x"};
+  Input<float> gyro_y{"gyro_y"};
+
+  Output<Buffer<float>> accum_val_out{"accum_val_out", 2};
+  Output<Buffer<float>> accum_weight_out{"accum_weight_out", 2};
+
+  void generate() {
+    Expr width = ref_frame.width();
+    Expr height = ref_frame.height();
+
+    // 1. Wrap ref_frame and alt_frame as 2-frame 3D function
+    Func imgs("accum_imgs");
+    imgs(x, y, n) = select(n == 0, ref_frame(x, y), alt_frame(x, y));
+
+    // 2. Align with gyro prior displacement
+    Func alignment = align(imgs, width, height, gyro_x, gyro_y);
+
+    // 3. Compute temporal motion weights (local L1 diff, dynamic shot noise threshold, 3x3 DilateMask)
+    Func temporal_weight = merge_temporal_weights(imgs, width, height, alignment);
+
+    // Total tiles along x and y (Range extent = number of tiles)
+    Expr tiles_x = width / T_SIZE_2;
+    Expr tiles_y = height / T_SIZE_2;
+
+    // Temporal weight for alternate frame (n = 1) with boundary clamping
+    Func alt_weight("alt_weight");
+    alt_weight(tx, ty) = temporal_weight(tx, ty, 1);
+    Func weight_repeat = BoundaryConditions::repeat_edge(
+        alt_weight, {Range(0, tiles_x), Range(0, tiles_y)});
+
+    // 4. Raised cosine spatial window for 32x32 tiles (16px hop)
+    Func rc_weight("accum_rc_weights");
+    float pi = 3.141592f;
+    rc_weight(v) = 0.5f - 0.5f * cos(2 * pi * (v + 0.5f) / T_SIZE);
+
+    Expr rw_00 = rc_weight(idx_0(x)) * rc_weight(idx_0(y));
+    Expr rw_10 = rc_weight(idx_1(x)) * rc_weight(idx_0(y));
+    Expr rw_01 = rc_weight(idx_0(x)) * rc_weight(idx_1(y));
+    Expr rw_11 = rc_weight(idx_1(x)) * rc_weight(idx_1(y));
+
+    Expr tx0 = tile_0(x);
+    Expr tx1 = tile_1(x);
+    Expr ty0 = tile_0(y);
+    Expr ty1 = tile_1(y);
+
+    // Temporal weights for the 4 overlapping tiles
+    Expr tw_00 = weight_repeat(tx0, ty0);
+    Expr tw_10 = weight_repeat(tx1, ty0);
+    Expr tw_01 = weight_repeat(tx0, ty1);
+    Expr tw_11 = weight_repeat(tx1, ty1);
+
+    Expr w_00 = rw_00 * tw_00;
+    Expr w_10 = rw_10 * tw_10;
+    Expr w_01 = rw_01 * tw_01;
+    Expr w_11 = rw_11 * tw_11;
+
+    // Alignment offsets for the 4 overlapping tiles (n = 1)
+    Point off_00 = clamp(P(alignment(tx0, ty0, 1)), P(MIN_OFFSET, MIN_OFFSET), P(MAX_OFFSET, MAX_OFFSET));
+    Point off_10 = clamp(P(alignment(tx1, ty0, 1)), P(MIN_OFFSET, MIN_OFFSET), P(MAX_OFFSET, MAX_OFFSET));
+    Point off_01 = clamp(P(alignment(tx0, ty1, 1)), P(MIN_OFFSET, MIN_OFFSET), P(MAX_OFFSET, MAX_OFFSET));
+    Point off_11 = clamp(P(alignment(tx1, ty1, 1)), P(MIN_OFFSET, MIN_OFFSET), P(MAX_OFFSET, MAX_OFFSET));
+
+    // Mirror interior for sampling alternate frame
+    Func alt_mirror = BoundaryConditions::mirror_interior(
+        alt_frame, {Range(0, width), Range(0, height)});
+
+    Expr val_00 = f32(alt_mirror(x + off_00.x, y + off_00.y));
+    Expr val_10 = f32(alt_mirror(x + off_10.x, y + off_10.y));
+    Expr val_01 = f32(alt_mirror(x + off_01.x, y + off_01.y));
+    Expr val_11 = f32(alt_mirror(x + off_11.x, y + off_11.y));
+
+    // Effective sample value S and weight W
+    Expr S = w_00 * val_00 + w_10 * val_10 + w_01 * val_01 + w_11 * val_11;
+    Expr W = w_00 + w_10 + w_01 + w_11;
+
+    // Accumulate outputs
+    accum_val_out(x, y) = accum_val_in(x, y) + S;
+    accum_weight_out(x, y) = accum_weight_in(x, y) + W;
+
+    // Schedule
+    rc_weight.compute_root().vectorize(v, 32);
+
+    accum_val_out.compute_root().parallel(y).vectorize(x, 16);
+    accum_weight_out.compute_root().parallel(y).vectorize(x, 16);
+  }
+
+private:
+  Var x{"x"}, y{"y"}, v{"v"}, n{"n"}, tx{"tx"}, ty{"ty"};
+};
+
 } // namespace
 
 HALIDE_REGISTER_GENERATOR(HdrPlusRawPipeline, hdrplus_raw_pipeline)
+HALIDE_REGISTER_GENERATOR(HdrPlusAccumulatePipeline, hdrplus_accumulate_step)

@@ -80,3 +80,6 @@ Halide::Func align(const Halide::Func imgs, Halide::Expr width,
 Halide::Func align(const Halide::Func imgs, Halide::Expr width,
                    Halide::Expr height,
                    Halide::Func gyro_x, Halide::Func gyro_y);
+Halide::Func align(const Halide::Func imgs, Halide::Expr width,
+                   Halide::Expr height,
+                   Halide::Expr gyro_x, Halide::Expr gyro_y);

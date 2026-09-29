@@ -63,14 +63,14 @@ Func merge_temporal_weights(Halide::Func imgs, Expr width, Expr height,
   Expr noise_floor = min_dist + cast<int32_t>(sqrt(max(0.0f, f32(ref_mean) * 2.0f)));
   Expr dynamic_min_dist = max(min_dist, noise_floor);
   Expr dynamic_max_dist = max(max_dist, dynamic_min_dist * 8);
-
   Expr norm_dist = max(1, (i32(dist) - dynamic_min_dist) / factor);
-  Expr thresh = (dynamic_max_dist - dynamic_min_dist);
 
   // Raw weight for each tile in temporal merge; inversely proportional to L1 distance
+  // When tile L1 distance exceeds dynamic_max_dist, weight is zeroed (motion rejection)
   Func raw_weight("merge_temporal_raw_weights");
   raw_weight(tx, ty, n) =
-      select(norm_dist > thresh, 0.f, 1.f / f32(norm_dist));
+      select(i32(dist) > dynamic_max_dist, 0.f, 1.f / f32(norm_dist));
+
 
   // Motion mask: 1.0f where tile is classified as motion (raw_weight == 0.f), 0.0f otherwise
   Func motion_mask("merge_temporal_motion_mask");

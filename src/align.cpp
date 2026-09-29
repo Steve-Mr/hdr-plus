@@ -73,10 +73,8 @@ Func align_layer(Func layer, Func prev_alignment, Point prev_min,
  * is a point representing the x and y offset for a tile in layer n that most
  * closely matches that tile in the reference (relative to the reference tile's
  * location).
- * Supports optional gyro prior offset (gyro_x(n), gyro_y(n)) at the coarsest layer.
  */
-Func align(const Halide::Func imgs, Halide::Expr width, Halide::Expr height,
-           Halide::Func gyro_x, Halide::Func gyro_y) {
+Func align(const Halide::Func imgs, Halide::Expr width, Halide::Expr height) {
 
   Func alignment_3("layer_3_alignment");
   Func alignment("alignment");
@@ -99,31 +97,23 @@ Func align(const Halide::Func imgs, Halide::Expr width, Halide::Expr height,
   Point min_search = P(-4, -4);
   Point max_search = P(3, 3);
 
-  // Initial layer 3 search bounds:
-  // When gyro prior is used, allow layer 3 to offset within [-4, 3] (spanning ~500px raw displacement).
-  // When no gyro is used (or gyro is 0), clamp(P(0,0), min_3, max_3) remains (0,0).
-  Point min_3 = P(-4, -4);
+  Point min_3 = P(0, 0);
   Point min_2 = DOWNSAMPLE_RATE * min_3 + min_search;
   Point min_1 = DOWNSAMPLE_RATE * min_2 + min_search;
 
-  Point max_3 = P(3, 3);
+  Point max_3 = P(0, 0);
   Point max_2 = DOWNSAMPLE_RATE * max_3 + max_search;
   Point max_1 = DOWNSAMPLE_RATE * max_2 + max_search;
 
-  // Initial alignment of coarsest layer (layer 3):
-  // If gyro prior is provided, use the prior angular displacement (gyro_x(n), gyro_y(n))
-  // as the initial offset center, enabling fine-grained search around it at layer 2.
-  if (gyro_x.defined() && gyro_y.defined()) {
-    alignment_3(tx, ty, n) = P(i16(gyro_x(n)), i16(gyro_y(n)));
-  } else {
-    alignment_3(tx, ty, n) = P(0, 0);
-  }
+  // initial alignment of previous layer is 0, 0
 
-  // Hierarchical alignment functions:
-  // Layers 2 and 1 use search_radius 4; layer 0 uses search_radius 2 for speed.
-  Func alignment_2 = align_layer(layer_2, alignment_3, min_3, max_3, 4);
-  Func alignment_1 = align_layer(layer_1, alignment_2, min_2, max_2, 4);
-  Func alignment_0 = align_layer(layer_0, alignment_1, min_1, max_1, 2);
+  alignment_3(tx, ty, n) = P(0, 0);
+
+  // hierarchal alignment functions
+
+  Func alignment_2 = align_layer(layer_2, alignment_3, min_3, max_3);
+  Func alignment_1 = align_layer(layer_1, alignment_2, min_2, max_2);
+  Func alignment_0 = align_layer(layer_0, alignment_1, min_1, max_1);
 
   // number of tiles in the x and y dimensions
 
@@ -141,33 +131,8 @@ Func align(const Halide::Func imgs, Halide::Expr width, Halide::Expr height,
   return alignment_repeat;
 }
 
-Func align(const Halide::Func imgs, Halide::Expr width, Halide::Expr height,
-           Halide::Func gyro_offsets) {
-  if (gyro_offsets.defined()) {
-    Func gyro_x("gyro_x"), gyro_y("gyro_y");
-    Var n("n");
-    gyro_x(n) = gyro_offsets(0, n);
-    gyro_y(n) = gyro_offsets(1, n);
-    return align(imgs, width, height, gyro_x, gyro_y);
-  } else {
-    return align(imgs, width, height, Func(), Func());
-  }
-}
-
-Func align(const Halide::Func imgs, Halide::Expr width, Halide::Expr height) {
-  return align(imgs, width, height, Func(), Func());
-}
-
-Func align(const Halide::Func imgs, Halide::Expr width, Halide::Expr height,
-           Halide::Expr gyro_x, Halide::Expr gyro_y) {
-  Func gx("gyro_x_func"), gy("gyro_y_func");
-  Var n("n");
-  gx(n) = select(n == 0, 0.0f, gyro_x);
-  gy(n) = select(n == 0, 0.0f, gyro_y);
-  return align(imgs, width, height, gx, gy);
-}
-
 Halide::Func align(Halide::Buffer<uint16_t> imgs) {
   Halide::Func imgs_function(imgs);
   return align(imgs_function, imgs.width(), imgs.height());
 }
+

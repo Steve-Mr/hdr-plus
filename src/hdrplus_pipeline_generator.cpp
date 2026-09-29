@@ -451,8 +451,6 @@ public:
   Input<Buffer<uint16_t>> alt_frame{"alt_frame", 2};
   Input<Buffer<float>> accum_val_in{"accum_val_in", 2};
   Input<Buffer<float>> accum_weight_in{"accum_weight_in", 2};
-  Input<float> gyro_x{"gyro_x"};
-  Input<float> gyro_y{"gyro_y"};
 
   Output<Buffer<float>> accum_val_out{"accum_val_out", 2};
   Output<Buffer<float>> accum_weight_out{"accum_weight_out", 2};
@@ -465,11 +463,12 @@ public:
     Func imgs("accum_imgs");
     imgs(x, y, n) = select(n == 0, ref_frame(x, y), alt_frame(x, y));
 
-    // 2. Align with gyro prior displacement
-    Func alignment = align(imgs, width, height, gyro_x, gyro_y);
+    // 2. Align with pure hierarchical optical flow
+    Func alignment = align(imgs, width, height);
 
     // 3. Compute temporal motion weights (local L1 diff, dynamic shot noise threshold, 3x3 DilateMask)
     Func temporal_weight = merge_temporal_weights(imgs, width, height, alignment);
+
 
     // Total tiles along x and y (Range extent = number of tiles)
     Expr tiles_x = width / T_SIZE_2;

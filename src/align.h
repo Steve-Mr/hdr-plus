@@ -4,10 +4,8 @@
 #define T_SIZE_2                                                               \
   16 // Half of T_SIZE and the size of a tile throughout the alignment pyramid
 
-#define MIN_OFFSET \
-  -680 // Min total alignment (expanded from -168 to accommodate gyro prior offsets)
-#define MAX_OFFSET \
-  512 // Max total alignment (expanded from 126 to accommodate gyro prior offsets)
+#define MIN_OFFSET -168 // Min total alignment
+#define MAX_OFFSET 126  // Max total alignment
 
 #define DOWNSAMPLE_RATE                                                        \
   4 // Rate at which layers of the alignment pyramid are downsampled relative to
@@ -69,17 +67,8 @@ inline Halide::Expr idx_layer(Halide::Expr t, Halide::Expr i) {
  * is a point representing the x and y offset for a tile in layer n that most
  * closely matches that tile in the reference (relative to the reference tile's
  * location).
- * Optionally supports gyro prior displacements (gyro_x(n), gyro_y(n)) at the coarsest layer.
  */
 Halide::Func align(Halide::Buffer<uint16_t> imgs);
 Halide::Func align(const Halide::Func imgs, Halide::Expr width,
                    Halide::Expr height);
-Halide::Func align(const Halide::Func imgs, Halide::Expr width,
-                   Halide::Expr height,
-                   Halide::Func gyro_offsets);
-Halide::Func align(const Halide::Func imgs, Halide::Expr width,
-                   Halide::Expr height,
-                   Halide::Func gyro_x, Halide::Func gyro_y);
-Halide::Func align(const Halide::Func imgs, Halide::Expr width,
-                   Halide::Expr height,
-                   Halide::Expr gyro_x, Halide::Expr gyro_y);
+

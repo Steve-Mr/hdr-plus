@@ -14,6 +14,8 @@ using namespace Halide::ConciseCasts;
  * tile. Thresholds L1 scores so that tiles above a certain distance are
  * completely discounted, and tiles below a certain distance are assumed to be
  * perfectly aligned.
+ *
+ * Enhanced with dynamic noise thresholding and DilateMask morphological ghost rejection.
  */
 Func merge_temporal(Halide::Func imgs, Expr width, Expr height, Expr frames,
                     Func alignment) {
@@ -58,17 +60,67 @@ Func merge_temporal(Halide::Func imgs, Expr width, Expr height, Expr frames,
   int min_dist = 10;  // pixel L1 distance below which weight is maximal
   int max_dist = 300; // pixel L1 distance above which weight is zero
 
-  // average L1 distance in tile and distance normalized to min and factor
+  // average L1 distance in tile
 
   Expr dist = sum(abs(i32(ref_val) - i32(alt_val))) / 256;
 
-  Expr norm_dist = max(1, i32(dist) / factor - min_dist / factor);
+  // Dynamic noise thresholding:
+  // Tile average intensity of the reference frame:
+  Expr ref_mean = sum(i32(ref_val)) / 256;
 
-  // weight for each tile in temporal merge; inversely proportional to reference
-  // and alternate tile L1 distance
+  // Estimate noise floor based on signal brightness (Poisson shot noise variance ~ signal):
+  // In dark areas, noise floor stays at baseline min_dist (10).
+  // In bright / noisy areas, noise floor expands smoothly to prevent photon noise from being misclassified as motion.
+  Expr noise_floor = min_dist + cast<int32_t>(sqrt(max(0.0f, f32(ref_mean) * 2.0f)));
+  Expr dynamic_min_dist = max(min_dist, noise_floor);
+  Expr dynamic_max_dist = max(max_dist, dynamic_min_dist * 8);
 
-  weight(tx, ty, n) =
-      select(norm_dist > (max_dist - min_dist), 0.f, 1.f / norm_dist);
+  Expr norm_dist = max(1, (i32(dist) - dynamic_min_dist) / factor);
+  Expr thresh = (dynamic_max_dist - dynamic_min_dist);
+
+  // Raw weight for each tile in temporal merge; inversely proportional to L1 distance
+  Func raw_weight("merge_temporal_raw_weights");
+  raw_weight(tx, ty, n) =
+      select(norm_dist > thresh, 0.f, 1.f / f32(norm_dist));
+
+  // Motion mask: 1.0f where tile is classified as motion (raw_weight == 0.f), 0.0f otherwise
+  Func motion_mask("merge_temporal_motion_mask");
+  motion_mask(tx, ty, n) = select(raw_weight(tx, ty, n) == 0.f, 1.f, 0.f);
+
+  // 3x3 DilateMask Morphological Ghosting Rejection:
+  // Boundary-clamped sampling of the 3x3 neighborhood of motion_mask
+  Expr num_tx = width / T_SIZE_2 - 1;
+  Expr num_ty = height / T_SIZE_2 - 1;
+
+  Expr tx_m = clamp(tx - 1, 0, num_tx);
+  Expr tx_p = clamp(tx + 1, 0, num_tx);
+  Expr ty_m = clamp(ty - 1, 0, num_ty);
+  Expr ty_p = clamp(ty + 1, 0, num_ty);
+
+  Expr m00 = motion_mask(tx_m, ty_m, n);
+  Expr m01 = motion_mask(tx,   ty_m, n);
+  Expr m02 = motion_mask(tx_p, ty_m, n);
+  Expr m10 = motion_mask(tx_m, ty,   n);
+  Expr m11 = motion_mask(tx,   ty,   n);
+  Expr m12 = motion_mask(tx_p, ty,   n);
+  Expr m20 = motion_mask(tx_m, ty_p, n);
+  Expr m21 = motion_mask(tx,   ty_p, n);
+  Expr m22 = motion_mask(tx_p, ty_p, n);
+
+  Expr neighbor_motion_sum = m00 + m01 + m02 + m10 + m11 + m12 + m20 + m21 + m22;
+  Expr dilated_max = max(max(max(m00, m01), max(m02, m10)),
+                         max(max(m11, m12), max(m20, max(m21, m22))));
+
+  // Morphological dilation ghost rejection with smooth boundary transition:
+  // 1. If center tile itself has motion (m11 > 0.5f), weight is strictly 0.f (single-frame fallback).
+  // 2. If center tile is static but in the 3x3 dilated motion neighborhood (dilated_max > 0.5f),
+  //    smoothly attenuate weight based on neighbor motion density to eliminate seam hard cuts and purple fringing.
+  // 3. Otherwise (clean static neighborhood), use full raw_weight.
+  Expr motion_atten = clamp(1.f - neighbor_motion_sum * 0.25f, 0.f, 1.f);
+  weight(tx, ty, n) = select(m11 > 0.5f, 0.f,
+                             select(dilated_max > 0.5f,
+                                    raw_weight(tx, ty, n) * motion_atten,
+                                    raw_weight(tx, ty, n)));
 
   // total weight for each tile in a temporal stack of images
 
@@ -94,6 +146,10 @@ Func merge_temporal(Halide::Func imgs, Expr width, Expr height, Expr frames,
   ///////////////////////////////////////////////////////////////////////////
   // schedule
   ///////////////////////////////////////////////////////////////////////////
+
+  raw_weight.compute_root().parallel(ty).vectorize(tx, 16);
+
+  motion_mask.compute_root().parallel(ty).vectorize(tx, 16);
 
   weight.compute_root().parallel(ty).vectorize(tx, 16);
 

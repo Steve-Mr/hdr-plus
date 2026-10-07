@@ -13,7 +13,7 @@ using namespace Halide::ConciseCasts;
  * resolution provided the offsets for the layer above.
  */
 Func align_layer(Func layer, Func prev_alignment, Point prev_min,
-                 Point prev_max, int search_radius = 4) {
+                 Point prev_max, int search_radius = 4, int reg_weight = 8) {
 
   Func scores(layer.name() + "_scores");
   Func alignment(layer.name() + "_alignment");
@@ -48,9 +48,11 @@ Func align_layer(Func layer, Func prev_alignment, Point prev_min,
   Expr dist = abs(i32(ref_val) - i32(alt_val));
 
   // sum of L1 distances over each pixel in a tile, for the offset specified by
-  // xi, yi
+  // xi, yi. Spatial center-regularization (L1 penalty) towards the center offset
+  // (xi=0, yi=0, corresponding to prev_offset) prevents erratic motion vectors on flat/textureless regions.
 
-  scores(xi, yi, tx, ty, n) = sum(dist);
+  Expr penalty = cast<int32_t>(abs(xi) + abs(yi));
+  scores(xi, yi, tx, ty, n) = sum(dist) + penalty * reg_weight;
 
   // alignment offset for each tile (offset where score is minimum)
 
@@ -111,9 +113,9 @@ Func align(const Halide::Func imgs, Halide::Expr width, Halide::Expr height) {
 
   // hierarchal alignment functions
 
-  Func alignment_2 = align_layer(layer_2, alignment_3, min_3, max_3);
-  Func alignment_1 = align_layer(layer_1, alignment_2, min_2, max_2);
-  Func alignment_0 = align_layer(layer_0, alignment_1, min_1, max_1);
+  Func alignment_2 = align_layer(layer_2, alignment_3, min_3, max_3, 4, 8);
+  Func alignment_1 = align_layer(layer_1, alignment_2, min_2, max_2, 4, 8);
+  Func alignment_0 = align_layer(layer_0, alignment_1, min_1, max_1, 4, 16);
 
   // number of tiles in the x and y dimensions
 

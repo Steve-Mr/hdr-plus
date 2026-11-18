@@ -501,16 +501,35 @@ public:
     Expr tw_01 = weight_repeat(tx0, ty1);
     Expr tw_11 = weight_repeat(tx1, ty1);
 
-    Expr w_00 = rw_00 * tw_00;
-    Expr w_10 = rw_10 * tw_10;
-    Expr w_01 = rw_01 * tw_01;
-    Expr w_11 = rw_11 * tw_11;
-
     // Alignment offsets for the 4 overlapping tiles (n = 1)
     Point off_00 = clamp(P(alignment(tx0, ty0, 1)), P(MIN_OFFSET, MIN_OFFSET), P(MAX_OFFSET, MAX_OFFSET));
     Point off_10 = clamp(P(alignment(tx1, ty0, 1)), P(MIN_OFFSET, MIN_OFFSET), P(MAX_OFFSET, MAX_OFFSET));
     Point off_01 = clamp(P(alignment(tx0, ty1, 1)), P(MIN_OFFSET, MIN_OFFSET), P(MAX_OFFSET, MAX_OFFSET));
     Point off_11 = clamp(P(alignment(tx1, ty1, 1)), P(MIN_OFFSET, MIN_OFFSET), P(MAX_OFFSET, MAX_OFFSET));
+
+    // Sub-tile 2x2 Bayer quad residual gate to eliminate blocky tile ghosting on fast motion
+    Func imgs_mirror = BoundaryConditions::mirror_interior(
+        imgs, {Range(0, width), Range(0, height)});
+    Func quad_layer = box_down2(imgs_mirror, "accum_quad_layer");
+
+    Expr qx = x / 2;
+    Expr qy = y / 2;
+    Expr q_ref = f32(quad_layer(qx, qy, 0));
+    Expr q_sigma = 6.0f + sqrt(max(0.0f, q_ref * 0.75f));
+    Expr q_lo = 2.0f * q_sigma;
+    Expr q_hi = 4.5f * q_sigma;
+
+    auto quad_gate = [&](Point off) {
+        Expr q_alt = f32(quad_layer(qx + off.x / 2, qy + off.y / 2, 1));
+        Expr q_diff = abs(q_alt - q_ref);
+        Expr qt = clamp((q_hi - q_diff) / max(1.0f, q_hi - q_lo), 0.0f, 1.0f);
+        return qt * qt * (3.0f - 2.0f * qt);
+    };
+
+    Expr w_00 = rw_00 * tw_00 * quad_gate(off_00);
+    Expr w_10 = rw_10 * tw_10 * quad_gate(off_10);
+    Expr w_01 = rw_01 * tw_01 * quad_gate(off_01);
+    Expr w_11 = rw_11 * tw_11 * quad_gate(off_11);
 
     // Mirror interior for sampling alternate frame
     Func alt_mirror = BoundaryConditions::mirror_interior(

@@ -38,14 +38,13 @@ Func merge_temporal_weights(Halide::Func imgs, Expr width, Expr height,
   Func layer = box_down2(imgs_mirror, "merge_layer");
 
   // constants for determining strength and robustness of temporal merge
-  float factor = 8.f; // factor by which inverse function is elongated
-  int min_dist = 10;  // pixel L1 distance below which weight is maximal
-  int max_dist = 300; // pixel L1 distance above which weight is zero
+  float factor = 6.f; // factor by which inverse function is elongated
+  int min_dist = 6;   // pixel L1 distance below which weight is maximal
 
   // Reference tile smoothness analysis:
   // Measure local contrast / spatial gradient of the reference frame across the tile.
   // In a smooth/flat region (e.g. ceramic mug, uniform sky, flat wall), ref_variation is small
-  // and dominated solely by shot noise. True ghosting cannot visually occur on flat regions.
+  // and dominated solely by shot noise.
   Expr ref_x_smooth = idx_layer(tx, r_ref.x);
   Expr ref_y_smooth = idx_layer(ty, r_ref.y);
   Expr ref_val_smooth = layer(ref_x_smooth, ref_y_smooth, 0);
@@ -54,8 +53,8 @@ Func merge_temporal_weights(Halide::Func imgs, Expr width, Expr height,
   Expr ref_grad_y = abs(i32(layer(ref_x_smooth, ref_y_smooth + 1, 0)) - i32(ref_val_smooth));
   Expr ref_variation = sum(ref_grad_x + ref_grad_y) / 256;
 
-  Expr noise_floor_smooth = min_dist + cast<int32_t>(sqrt(max(0.0f, f32(ref_mean_smooth) * 2.0f)));
-  Expr var_threshold = max(60.0f, f32(noise_floor_smooth) * 2.5f);
+  Expr noise_floor_smooth = min_dist + cast<int32_t>(sqrt(max(0.0f, f32(ref_mean_smooth) * 0.75f)));
+  Expr var_threshold = max(16.0f, f32(noise_floor_smooth) * 1.5f);
 
   Func smoothness("merge_temporal_smoothness");
   smoothness(tx, ty) = clamp(1.0f - f32(ref_variation) / var_threshold, 0.0f, 1.0f);
@@ -76,25 +75,21 @@ Func merge_temporal_weights(Halide::Func imgs, Expr width, Expr height,
   // Tile average intensity of the reference frame:
   Expr ref_mean = sum(i32(ref_val)) / 256;
 
-  // Estimate noise floor based on signal brightness (Poisson shot noise variance ~ signal):
-  // In dark areas, noise floor stays at baseline min_dist (10).
-  // In bright / noisy areas, noise floor expands smoothly to prevent photon noise from being misclassified as motion.
-  Expr noise_floor = min_dist + cast<int32_t>(sqrt(max(0.0f, f32(ref_mean) * 2.0f)));
+  // Estimate noise floor based on signal brightness (scaled for 10/12-bit RAW range):
+  Expr noise_floor = min_dist + cast<int32_t>(sqrt(max(0.0f, f32(ref_mean) * 0.75f)));
   Expr base_min_dist = max(min_dist, noise_floor);
-  Expr base_max_dist = max(max_dist, base_min_dist * 8);
 
-  // Smoothness adaptation: expand thresholds on smooth tiles to prevent false motion triggers on subtle gradients
+  // Smoothness adaptation: gently widen min_dist (+35%) on flat tiles without inflating max_dist,
+  // so smooth moving subjects (skin/clothing) still trigger motion rejection reliably.
   Expr smooth_factor = smoothness(tx, ty);
-  Expr dynamic_min_dist = base_min_dist + cast<int32_t>(smooth_factor * f32(base_min_dist) * 1.5f);
-  Expr dynamic_max_dist = base_max_dist + cast<int32_t>(smooth_factor * f32(base_max_dist));
+  Expr dynamic_min_dist = base_min_dist + cast<int32_t>(smooth_factor * f32(base_min_dist) * 0.35f);
+  Expr dynamic_max_dist = clamp(cast<int32_t>(f32(base_min_dist) * 3.5f), 36, 220);
   Expr norm_dist = max(1, (i32(dist) - dynamic_min_dist) / factor);
 
   // Soft cutoff transition:
-  // Instead of a hard cliff dropping abruptly to 0.f at dynamic_max_dist,
-  // apply a smooth Hermite decay between dynamic_max_dist and dynamic_cutoff_dist.
   Expr dist_f = f32(dist);
   Expr d_max_f = f32(dynamic_max_dist);
-  Expr d_cutoff_f = d_max_f * 1.5f;
+  Expr d_cutoff_f = d_max_f * 1.25f;
 
   Expr t = clamp((d_cutoff_f - dist_f) / max(1.0f, d_cutoff_f - d_max_f), 0.0f, 1.0f);
   Expr soft_decay = t * t * (3.0f - 2.0f * t);
@@ -137,20 +132,12 @@ Func merge_temporal_weights(Halide::Func imgs, Expr width, Expr height,
   Expr dilated_max = max(max(max(m00, m01), max(m02, m10)),
                          max(max(m11, m12), max(m20, max(m21, m22))));
 
-  // Morphological dilation ghost rejection with smooth boundary transition:
-  // 1. If center tile itself has motion (m11 > 0.5f), weight is strictly 0.f (single-frame fallback).
-  // 2. If center tile is static but in the 3x3 dilated motion neighborhood (dilated_max > 0.5f),
-  //    smoothly attenuate weight based on neighbor motion density.
-  //    IMPORTANT: On smooth/flat tiles (smooth_factor > 0), neighbor motion cannot produce visual ghosting
-  //    as there are no high-contrast edges to bleed across tiles. Modulating attenuation by (1.0f - smooth_factor)
-  //    prevents smooth tiles from being needlessly penalized and creating tile seam / checkerboard artifacts.
-  // 3. Otherwise (clean static neighborhood), use full raw_weight.
-  Expr motion_atten = clamp(1.f - neighbor_motion_sum * 0.25f, 0.f, 1.f);
-  Expr effective_atten = motion_atten * (1.0f - smooth_factor) + 1.0f * smooth_factor;
+  // Morphological dilation ghost rejection across 3x3 neighborhood:
+  Expr motion_atten = clamp(1.f - neighbor_motion_sum * 0.35f, 0.f, 1.f);
 
   weight(tx, ty, n) = select(m11 > 0.5f, 0.f,
                              select(dilated_max > 0.5f,
-                                    raw_weight(tx, ty, n) * effective_atten,
+                                    raw_weight(tx, ty, n) * motion_atten,
                                     raw_weight(tx, ty, n)));
 
   ///////////////////////////////////////////////////////////////////////////
